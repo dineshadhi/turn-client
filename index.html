@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TURN Video Relay Demo</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --primary-hover: #3a56d4;
+            --success-color: #4caf50;
+            --danger-color: #ef476f;
+            --background-color: #f8f9fa;
+            --card-background: #ffffff;
+            --text-color: #333333;
+            --border-radius: 12px;
+            --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            --transition: all 0.2s ease;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fb;
+            min-height: 100vh;
+            color: #1a1a1a;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .video-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--box-shadow);
+            transition: var(--transition);
+        }
+        
+        .video-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        video {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .timer-container {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .video-status {
+            padding: 12px 16px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: var(--border-radius);
+            background: var(--card-background);
+            box-shadow: var(--box-shadow);
+            transition: var(--transition);
+        }
+        
+        .video-status.connected {
+            background-color: rgba(72, 187, 120, 0.1);
+            border: 1px solid #48bb78;
+        }
+        
+        .video-status.connected i {
+            color: #48bb78;
+        }
+        
+        .video-status.ready {
+            background-color: rgba(255, 193, 7, 0.1);
+            border: 1px solid #ffc107;
+        }
+        
+        .video-status.ready i {
+            color: #ffc107;
+        }
+        
+        .video-status.connecting {
+            background-color: rgba(66, 153, 225, 0.1);
+            border: 1px solid #4299e1;
+        }
+        
+        .video-status.connecting i {
+            color: #4299e1;
+        }
+        
+        .video-status.disconnected {
+            background-color: rgba(239, 71, 111, 0.1);
+            border: 1px solid #ef476f;
+        }
+        
+        .video-status.disconnected i {
+            color: #ef476f;
+        }
+        
+        .controls {
+            background: var(--card-background);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .credentials-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .credentials-container:has(.secondary-credentials:not(.visible)) {
+            grid-template-columns: 1fr;
+        }
+
+        .credentials-container:has(.secondary-credentials:not(.visible)) .credentials-section {
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .credentials-section {
+            background: var(--card-background);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            border: 1px solid #eee;
+        }
+        
+        .section-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--primary-color);
+        }
+        
+        .form-group {
+            margin-bottom: 12px;
+        }
+        
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+        
+        .toggle-container {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            margin-bottom: 0;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .toggle-label {
+            margin-right: 12px;
+            font-weight: 500;
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #e2e8f0;
+            transition: var(--transition);
+            border-radius: 24px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: var(--transition);
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: var(--primary-color);
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+        
+        .button-group {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 12px;
+            margin-bottom: 0;
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+        
+        #connectButton {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        #connectButton:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+        
+        #disconnectButton {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        #disconnectButton:hover {
+            background-color: #d32f2f;
+            transform: translateY(-1px);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .secondary-credentials {
+            display: none;
+        }
+        
+        .secondary-credentials.visible {
+            display: block;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .credentials-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+
+            .container {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <div class="timer-container" id="timer">00:00:00</div>
+                </div>
+                <div id="localStatus" class="video-status">
+                    <i class="fas fa-circle"></i>
+                    <span>Disconnected</span>
+                </div>
+            </div>
+            
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                </div>
+                <div id="remoteStatus" class="video-status">
+                    <i class="fas fa-circle"></i>
+                    <span>Disconnected</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="toggle-container">
+                <label class="toggle-label" for="separateCredentials">Use separate credentials for second stream</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="separateCredentials">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            
+            <div class="credentials-container">
+                <div class="credentials-section">
+                    <div class="section-title">Primary TURN Server</div>
+                    <div class="form-group">
+                        <label for="turnUrl">TURN Server URL</label>
+                        <input type="text" 
+                               id="turnUrl" 
+                               list="turnUrlHistory"
+                               placeholder="turn:your-turn-server.com:3478"
+                               autocomplete="off">
+                        <datalist id="turnUrlHistory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" placeholder="Enter username">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" placeholder="Enter password">
+                    </div>
+                </div>
+                
+                <div id="secondaryCredentials" class="secondary-credentials credentials-section">
+                    <div class="section-title">Secondary TURN Server</div>
+                    <div class="form-group">
+                        <label for="turnUrl2">TURN Server URL</label>
+                        <input type="text" 
+                               id="turnUrl2" 
+                               list="turnUrl2History"
+                               placeholder="turn:your-turn-server.com:3478"
+                               autocomplete="off">
+                        <datalist id="turnUrl2History"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="username2">Username</label>
+                        <input type="text" id="username2" placeholder="Enter username">
+                    </div>
+                    <div class="form-group">
+                        <label for="password2">Password</label>
+                        <input type="password" id="password2" placeholder="Enter password">
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button id="connectButton">
+                    <i class="fas fa-plug"></i>
+                    Connect
+                </button>
+                <button id="disconnectButton" disabled>
+                    <i class="fas fa-times"></i>
+                    Disconnect
+                </button>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html> 
