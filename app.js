@@ -16,6 +16,9 @@ const remoteStatusDiv = document.getElementById('remoteStatus');
 const localIceInfo = document.getElementById('localIceInfo');
 const remoteIceInfo = document.getElementById('remoteIceInfo');
 const timerDiv = document.getElementById('timer');
+const mediaSourceSelect = document.getElementById('mediaSource');
+const themeToggle = document.getElementById('themeToggle');
+const maximizeButtons = document.querySelectorAll('.maximize-btn');
 
 // WebRTC configuration
 let peerConnection1;
@@ -34,6 +37,7 @@ function loadSavedCredentials() {
     turnUrlInput2.value = localStorage.getItem('turnUrl2') || '';
     usernameInput2.value = localStorage.getItem('username2') || '';
     passwordInput2.value = localStorage.getItem('password2') || '';
+    mediaSourceSelect.value = localStorage.getItem('mediaSource') || 'camera';
 
     // Load TURN URL history for datalists
     const turnUrlHistory = JSON.parse(localStorage.getItem('turnUrlHistory') || '[]');
@@ -70,6 +74,7 @@ function saveCredentials() {
     localStorage.setItem('username2', usernameInput2.value);
     localStorage.setItem('password2', passwordInput2.value);
     localStorage.setItem('useSeparateCredentials', separateCredentialsToggle.checked);
+    localStorage.setItem('mediaSource', mediaSourceSelect.value);
 
     // Update TURN URL history for both inputs
     let turnUrlHistory = JSON.parse(localStorage.getItem('turnUrlHistory') || '[]');
@@ -87,12 +92,41 @@ function saveCredentials() {
 // Initialize local video stream
 async function initializeLocalStream() {
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        // Stop any existing stream
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        
+        const mediaSource = mediaSourceSelect.value;
+        
+        if (mediaSource === 'camera') {
+            localStream = await navigator.mediaDevices.getUserMedia({ 
+                video: true, 
+                audio: true 
+            });
+        } else if (mediaSource === 'screen') {
+            // For screen sharing we need to use getDisplayMedia
+            localStream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: {
+                    cursor: 'always'
+                },
+                audio: true 
+            });
+            
+            // Add event listener to detect when user stops sharing
+            localStream.getVideoTracks()[0].addEventListener('ended', () => {
+                // Reset to camera when user stops screen sharing
+                mediaSourceSelect.value = 'camera';
+                saveCredentials();
+                initializeLocalStream();
+            });
+        }
+        
         localVideo.srcObject = localStream;
         updateLocalStatus('ready');
     } catch (error) {
         console.error('Error accessing media devices:', error);
-        alert('Error accessing camera and microphone. Please ensure you have granted the necessary permissions.');
+        showToast('Error accessing media devices. Please ensure you have granted the necessary permissions.', 'error');
         updateLocalStatus('disconnected');
     }
 }
@@ -121,6 +155,90 @@ function stopTimer() {
         timerInterval = null;
     }
     timerDiv.textContent = '00:00:00';
+}
+
+// Show toast notification
+function showToast(message, type = 'info') {
+    // Check if a toast container exists, create one if not
+    let toastContainer = document.querySelector('.toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container';
+        document.body.appendChild(toastContainer);
+        
+        // Add toast container styles
+        const style = document.createElement('style');
+        style.textContent = `
+            .toast-container {
+                position: fixed;
+                bottom: 1rem;
+                right: 1rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+                z-index: 1000;
+                max-width: 350px;
+            }
+            .toast {
+                padding: 0.75rem 1rem;
+                border-radius: var(--radius);
+                box-shadow: var(--shadow-md);
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                animation: slideIn 0.3s ease, fadeOut 0.5s ease 2.5s forwards;
+                pointer-events: auto;
+                width: 100%;
+            }
+            .toast-info {
+                background-color: var(--secondary);
+                color: var(--secondary-foreground);
+                border-left: 4px solid var(--primary);
+            }
+            .toast-error {
+                background-color: rgba(239, 68, 68, 0.15);
+                color: rgb(239, 68, 68);
+                border-left: 4px solid var(--destructive);
+            }
+            .toast-success {
+                background-color: rgba(34, 197, 94, 0.15);
+                color: rgb(34, 197, 94);
+                border-left: 4px solid rgb(34, 197, 94);
+            }
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Create toast
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    // Icon
+    const icon = document.createElement('i');
+    if (type === 'info') icon.className = 'fas fa-info-circle';
+    else if (type === 'error') icon.className = 'fas fa-exclamation-circle';
+    else if (type === 'success') icon.className = 'fas fa-check-circle';
+    
+    // Message
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = message;
+    
+    toast.appendChild(icon);
+    toast.appendChild(messageSpan);
+    toastContainer.appendChild(toast);
+    
+    // Remove toast after animation
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
 }
 
 // Helper function to extract IP and port from ICE candidate
@@ -198,6 +316,7 @@ function createPeerConnections() {
             startTimer();
             connectButton.disabled = true;
             disconnectButton.disabled = false;
+            showToast('Connection established successfully', 'success');
         } else if (peerConnection1.connectionState === 'disconnected' || 
                    peerConnection1.connectionState === 'failed' || 
                    peerConnection1.connectionState === 'closed') {
@@ -205,6 +324,9 @@ function createPeerConnections() {
             connectButton.disabled = false;
             disconnectButton.disabled = true;
             localRelayIp = '';
+            if (peerConnection1.connectionState === 'failed') {
+                showToast('Connection failed', 'error');
+            }
         }
     };
 
@@ -306,8 +428,10 @@ async function disconnect() {
         remoteRelayIp = '';
         updateLocalStatus('disconnected');
         updateRemoteStatus('disconnected');
+        showToast('Disconnected successfully', 'info');
     } catch (error) {
         console.error('Error disconnecting:', error);
+        showToast('Error while disconnecting', 'error');
     }
 }
 
@@ -319,6 +443,28 @@ async function connect() {
         }
 
         saveCredentials();
+        
+        // Validate inputs
+        if (!turnUrlInput.value) {
+            showToast('Please enter a TURN server URL', 'error');
+            turnUrlInput.focus();
+            return;
+        }
+        
+        if (!usernameInput.value || !passwordInput.value) {
+            showToast('Please enter username and password', 'error');
+            usernameInput.focus();
+            return;
+        }
+        
+        const useSeparateCredentials = separateCredentialsToggle.checked;
+        if (useSeparateCredentials && (!turnUrlInput2.value || !usernameInput2.value || !passwordInput2.value)) {
+            showToast('Please enter all secondary credentials', 'error');
+            turnUrlInput2.focus();
+            return;
+        }
+
+        showToast('Connecting to TURN server...', 'info');
         createPeerConnections();
 
         // Create and set local description on first peer
@@ -339,7 +485,7 @@ async function connect() {
         updateRemoteStatus('connecting');
     } catch (error) {
         console.error('Error connecting to TURN server:', error);
-        alert('Error connecting to TURN server. Please check your credentials and try again.');
+        showToast('Error connecting to TURN server. Please check your credentials.', 'error');
         updateLocalStatus('disconnected');
         updateRemoteStatus('disconnected');
     }
@@ -355,16 +501,88 @@ function toggleSecondaryCredentials() {
     saveCredentials();
 }
 
+// Handle video maximize/minimize
+function toggleMaximizeVideo(event) {
+    const button = event.currentTarget;
+    const videoCard = button.closest('.video-card');
+    const videoWrapper = button.closest('.video-wrapper');
+
+    // Add checks for elements
+    if (!button || !videoCard || !videoWrapper) {
+        console.error('Could not find necessary elements for video maximization.');
+        return;
+    }
+
+    console.log(`Toggling maximize for wrapper:`, videoWrapper);
+    const isMaximized = videoWrapper.classList.toggle('maximized');
+    console.log(`Wrapper is now maximized: ${isMaximized}`);
+
+    // Manage body overflow
+    if (isMaximized) {
+        console.log('Hiding body overflow');
+        document.body.style.overflow = 'hidden';
+    } else {
+        console.log('Restoring body overflow');
+        document.body.style.overflow = '';
+    }
+}
+
 // Event Listeners
 connectButton.addEventListener('click', connect);
 disconnectButton.addEventListener('click', disconnect);
 separateCredentialsToggle.addEventListener('change', toggleSecondaryCredentials);
+mediaSourceSelect.addEventListener('change', () => {
+    saveCredentials();
+    initializeLocalStream();
+});
+
+maximizeButtons.forEach(button => {
+    if (button) { // Check if button exists before adding listener
+        button.addEventListener('click', toggleMaximizeVideo);
+    } else {
+        console.error('Found a null element in maximizeButtons NodeList');
+    }
+});
 
 // Enhance: update TURN URL history on input blur/change
 turnUrlInput.addEventListener('blur', saveCredentials);
 turnUrlInput.addEventListener('change', saveCredentials);
 turnUrlInput2.addEventListener('blur', saveCredentials);
 turnUrlInput2.addEventListener('change', saveCredentials);
+
+// Handle dark mode toggle
+function initializeThemeToggle() {
+    const themeIcon = themeToggle.querySelector('i');
+    
+    // Check for saved theme preference or use system preference
+    const savedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    const prefersDark = savedTheme === 'dark' || (!savedTheme && systemPrefersDark);
+
+    if (prefersDark) {
+        document.body.classList.add('dark');
+        themeIcon.classList.remove('fa-moon');
+        themeIcon.classList.add('fa-sun');
+    }
+    
+    // Add event listener for theme toggle
+    themeToggle.addEventListener('click', () => {
+        const isDark = document.body.classList.toggle('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        
+        if (isDark) {
+            themeIcon.classList.remove('fa-moon');
+            themeIcon.classList.add('fa-sun');
+        } else {
+            themeIcon.classList.remove('fa-sun');
+            themeIcon.classList.add('fa-moon');
+        }
+    });
+}
+
+// Initialize theme toggle
+initializeThemeToggle();
 
 // Initialize
 loadSavedCredentials();
